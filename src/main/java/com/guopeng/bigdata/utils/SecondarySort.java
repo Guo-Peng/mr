@@ -1,4 +1,8 @@
-package com.guopeng.bigdata;
+package com.guopeng.bigdata.utils;
+
+import com.guopeng.bigdata.secondary.SecondaryGroup;
+import com.guopeng.bigdata.secondary.SecondaryKey;
+import com.guopeng.bigdata.secondary.SecondaryPartitioner;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -12,40 +16,44 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 
 import java.io.IOException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.guopeng.bigdata.utils.Utils.deleteDir;
 
 /**
- * Created by guopeng on 2017/4/19.
+ * Created by guopeng on 17-4-19.
  */
-public class WordCount {
-    public static class TokenizerMapper extends Mapper<Object, Text, Text, IntWritable> {
+public class SecondarySort {
+    public static class TokenizerMapper extends Mapper<Object, Text, SecondaryKey, IntWritable> {
+        SecondaryKey result = new SecondaryKey();
         Text word = new Text();
         IntWritable one = new IntWritable();
 
         public void map(Object key, Text value, Context context)
                 throws IOException, InterruptedException {
-            String[] line = value.toString().split("\\s+");
+            String line = value.toString();
 
-            one.set(1);
-            for (String item : line) {
-                word.set(item);
-                context.write(word, one);
+            String reg = "(.*?)(\\d+)";
+            Pattern pattern = Pattern.compile(reg);
+            Matcher matcher = pattern.matcher(line);
+            if (matcher.find()){
+                word.set(matcher.group(1));
+                one.set(Integer.valueOf(matcher.group(2)));
+                result.setFirstKey(word);
+                result.setSecondKey(one);
+                context.write(result, one);
             }
         }
     }
 
-    public static class IntSumReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
-        IntWritable count = new IntWritable();
+    public static class IntSumReducer extends Reducer<SecondaryKey, IntWritable, Text, IntWritable> {
 
-        public void reduce(Text key, Iterable<IntWritable> values, Context context)
+        public void reduce(SecondaryKey key, Iterable<IntWritable> values, Context context)
                 throws IOException, InterruptedException {
-            int result = 0;
             for (IntWritable val : values) {
-                result += val.get();
+                context.write(key.getFirstKey(), val);
             }
-            count.set(result);
-            context.write(key, count);
         }
     }
 
@@ -62,16 +70,19 @@ public class WordCount {
         // 第一个job的配置
         Job job = new Job(conf, "word count");
 
-        job.setJarByClass(WordCount.class);
+        job.setJarByClass(SecondarySort.class);
 
         job.setMapperClass(TokenizerMapper.class);
         job.setReducerClass(IntSumReducer.class);
 
-        job.setMapOutputKeyClass(Text.class);// map阶段的输出的key
+        job.setMapOutputKeyClass(SecondaryKey.class);// map阶段的输出的key
         job.setMapOutputValueClass(IntWritable.class);// map阶段的输出的value
 
         job.setOutputKeyClass(Text.class);// reduce阶段的输出的key
         job.setOutputValueClass(IntWritable.class);// reduce阶段的输出的value
+
+        job.setPartitionerClass(SecondaryPartitioner.class); //设置自定义分区策略
+        job.setGroupingComparatorClass(SecondaryGroup.class); //设置自定义分组策略
 
         job.setNumReduceTasks(10);
 
