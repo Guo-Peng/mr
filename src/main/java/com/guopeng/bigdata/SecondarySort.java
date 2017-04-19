@@ -1,4 +1,4 @@
-package com.guopeng.bigdata.utils;
+package com.guopeng.bigdata;
 
 import com.guopeng.bigdata.secondary.SecondaryGroup;
 import com.guopeng.bigdata.secondary.SecondaryKey;
